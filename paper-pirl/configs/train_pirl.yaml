@@ -1,16 +1,48 @@
 experiment_name: pirl_main
 seed: 42
+output_dir: paper-pirl/results
 
 core:
   base_config: ../agent-rl-core/configs/base.yaml
+
+model:
+  path: null
+  lora: true
+  lora_rank: 64
+  dtype: bf16
+
+trainer:
+  total_updates: 2000
+  batch_size: 2
+  learning_rate: 5.0e-6
+  log_interval: 20
+  eval_interval: 200
+  save_interval: 200
+  num_rollouts_per_prompt: 4
+  temperature: 1.0
+  top_p: 1.0
+  max_new_tokens: 192
+  max_prompt_tokens: 1024
+  grad_clip: 1.0
 
 method:
   name: pirl
   invariance_weight: 0.1
   randomization_strength: medium
   curriculum: true
-  retention_weight: 0.1
-  num_skills: 3
+  reward_mode: mixed
+  reward_blend_alpha: 0.7
+  failure_reward_floor: -0.01
+  flat_group_fallback: raw
+
+environment:
+  env_type: code
+  max_trajectory_length: 8
+  train_dataset: datasets/code/mbpp_train.jsonl
+  eval_dataset: datasets/code/humaneval_test.jsonl
+  max_train_samples: null
+  max_eval_samples: null
 
 evaluation:
   ood_levels: [iid, ood_easy, ood_hard]
+  eval_tasks_per_level: 64
