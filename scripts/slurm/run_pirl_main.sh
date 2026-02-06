@@ -42,8 +42,37 @@ if [ -z "${PYTHON_BIN}" ]; then
   exit 2
 fi
 
-module load "${GCC_MODULE:-compilers/gcc/9.3.0}"
-module load "${CUDA_MODULE:-compilers/cuda/11.6}"
+# Auto-match CUDA/GCC modules to installed torch wheel when caller did not override.
+TORCH_WHL_VER="$("${PYTHON_BIN}" - <<'PY'
+import importlib.metadata as md
+try:
+    print(md.version("torch"))
+except Exception:
+    print("")
+PY
+)"
+
+if [ -z "${CUDA_MODULE:-}" ] || [ -z "${GCC_MODULE:-}" ] || [ -z "${NCCL_MODULE:-}" ]; then
+  TORCH_CU_TAG="$(echo "${TORCH_WHL_VER}" | sed -n 's/.*+cu\([0-9][0-9][0-9]\).*/cu\1/p')"
+  case "${TORCH_CU_TAG}" in
+    cu118)
+      : "${CUDA_MODULE:=compilers/cuda/11.8}"
+      : "${GCC_MODULE:=compilers/gcc/11.3.0}"
+      : "${NCCL_MODULE:=nccl/2.11.4-1_cuda11.8}"
+      ;;
+    cu116)
+      : "${CUDA_MODULE:=compilers/cuda/11.6}"
+      : "${GCC_MODULE:=compilers/gcc/9.3.0}"
+      ;;
+    *)
+      : "${CUDA_MODULE:=compilers/cuda/11.6}"
+      : "${GCC_MODULE:=compilers/gcc/9.3.0}"
+      ;;
+  esac
+fi
+
+module load "${GCC_MODULE}"
+module load "${CUDA_MODULE}"
 module load "${CUDNN_MODULE:-cudnn/8.6.0.163_cuda11.x}"
 if [ -n "${NCCL_MODULE:-}" ]; then
   module load "${NCCL_MODULE}" 2>/dev/null || true
@@ -53,6 +82,27 @@ export PYTHONNOUSERSITE=1
 export TOKENIZERS_PARALLELISM=false
 export TMPDIR="${TMPDIR:-$HOME/tmp}"
 mkdir -p "${TMPDIR}"
+
+# Ensure CUPTI runtime is visible for torch CUDA wheels that link libcupti.so.<ver>.
+CUDA_ROOT=""
+if [ -n "${CUDA_HOME:-}" ] && [ -d "${CUDA_HOME}" ]; then
+  CUDA_ROOT="${CUDA_HOME}"
+elif [ -n "${CUDA_PATH:-}" ] && [ -d "${CUDA_PATH}" ]; then
+  CUDA_ROOT="${CUDA_PATH}"
+elif command -v nvcc >/dev/null 2>&1; then
+  CUDA_ROOT="$(dirname "$(dirname "$(command -v nvcc)")")"
+elif [ -d /usr/local/cuda ]; then
+  CUDA_ROOT="/usr/local/cuda"
+fi
+
+if [ -n "${CUDA_ROOT}" ]; then
+  if [ -d "${CUDA_ROOT}/extras/CUPTI/lib64" ]; then
+    export LD_LIBRARY_PATH="${CUDA_ROOT}/extras/CUPTI/lib64:${LD_LIBRARY_PATH:-}"
+  fi
+  if [ -d "${CUDA_ROOT}/lib64" ]; then
+    export LD_LIBRARY_PATH="${CUDA_ROOT}/lib64:${LD_LIBRARY_PATH:-}"
+  fi
+fi
 
 PIRL_CONFIG="${PIRL_CONFIG:-paper-pirl/configs/train_pirl.yaml}"
 MODEL_PATH="${MODEL_PATH:-}"
@@ -108,6 +158,8 @@ echo "MODEL_PATH=${MODEL_PATH}"
 echo "TRAIN_DATA=${TRAIN_DATA}"
 echo "EVAL_DATA=${EVAL_DATA}"
 echo "EXPERIMENT_NAME=${EXPERIMENT_NAME}"
+echo "TORCH_WHL_VER=${TORCH_WHL_VER}"
+echo "GCC_MODULE=${GCC_MODULE} CUDA_MODULE=${CUDA_MODULE} NCCL_MODULE=${NCCL_MODULE:-}"
 echo "MAX_STEPS=${MAX_STEPS}, BATCH_SIZE=${BATCH_SIZE}, NUM_ROLLOUTS_PER_PROMPT=${NUM_ROLLOUTS_PER_PROMPT}"
 
 PY_ARGS=(
