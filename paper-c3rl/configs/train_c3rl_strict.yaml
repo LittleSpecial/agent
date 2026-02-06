@@ -10,6 +10,15 @@ method:
   max_interventions_per_traj: 3
   intervention_policy: selective
   baseline_warmup_updates: 10
+  counterfactual_k: 8
+  intervention_types: [delete, truncate, swap]
+  delete_block_size: 2
+  credit_normalization: signed
+  cost_normalization: signed
+  reward_mode: mixed
+  reward_blend_alpha: 0.7
+  failure_reward_floor: -0.01
+  cf_cache_size: 20000
 
 environment:
   train_tasks: 512

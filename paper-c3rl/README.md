@@ -14,6 +14,7 @@ pip install -e .
 ## Scope
 - C3-RL method implementation
 - A baseline -> C3 upgrade path (same pipeline)
+- Real counterfactual replay credit (delete/truncate/swap) for both success and cost channels
 - C3-specific configs and experiments
 - C3 ablation scripts and analysis
 

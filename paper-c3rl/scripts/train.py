@@ -191,6 +191,18 @@ def main() -> None:
                 "output_tokens": float(constraints_cfg.get("output_tokens_budget", 1200.0)),
                 "latency_ms": float(constraints_cfg.get("latency_ms_budget", 15000.0)),
             },
+            counterfactual_k=int(method_cfg.get("counterfactual_k", 6)),
+            intervention_types=[
+                str(x) for x in method_cfg.get("intervention_types", ["delete", "truncate", "swap"])
+            ],
+            delete_block_size=int(method_cfg.get("delete_block_size", 2)),
+            credit_normalization=str(method_cfg.get("credit_normalization", "signed")),
+            cost_normalization=str(method_cfg.get("cost_normalization", "signed")),
+            reward_mode=str(method_cfg.get("reward_mode", "mixed")),
+            reward_blend_alpha=float(method_cfg.get("reward_blend_alpha", 0.7)),
+            failure_reward_floor=float(method_cfg.get("failure_reward_floor", -0.01)),
+            action_space=list(action_space),
+            cf_cache_size=int(method_cfg.get("cf_cache_size", 20000)),
         ),
         seed=seed,
     )
@@ -205,7 +217,11 @@ def main() -> None:
     rng = random.Random(seed + 7)
     for step in range(1, total_updates + 1):
         batch = [train_tasks[rng.randrange(len(train_tasks))] for _ in range(batch_size)]
-        rollouts = [runner.run_episode(task) for task in batch]
+        rollouts = []
+        for task in batch:
+            rollout = runner.run_episode(task)
+            rollout["task"] = task
+            rollouts.append(rollout)
         if step <= baseline_warmup_updates:
             policy.update_from_rollouts(
                 rollouts=rollouts,
@@ -222,7 +238,11 @@ def main() -> None:
         _write_jsonl(metrics_path, row)
 
         if step % eval_interval == 0:
-            eval_rollouts = [runner.run_episode(task) for task in eval_tasks]
+            eval_rollouts = []
+            for task in eval_tasks:
+                rollout = runner.run_episode(task)
+                rollout["task"] = task
+                eval_rollouts.append(rollout)
             eval_metrics = _avg_rollout_metrics(eval_rollouts)
             _write_jsonl(eval_path, {"step": step, **eval_metrics})
 
