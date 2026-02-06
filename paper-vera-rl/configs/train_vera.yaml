@@ -1,0 +1,14 @@
+experiment_name: vera_main
+seed: 42
+
+core:
+  base_config: ../agent-rl-core/configs/base.yaml
+
+method:
+  name: vera_rl
+  recheck_budget_ratio: 0.1
+  uncertainty_threshold: 0.7
+  calibration_window: 2000
+
+evaluation:
+  noise_sweep: [0.0, 0.05, 0.1, 0.2]

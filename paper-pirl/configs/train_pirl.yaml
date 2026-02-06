@@ -1,0 +1,16 @@
+experiment_name: pirl_main
+seed: 42
+
+core:
+  base_config: ../agent-rl-core/configs/base.yaml
+
+method:
+  name: pirl
+  invariance_weight: 0.1
+  randomization_strength: medium
+  curriculum: true
+  retention_weight: 0.1
+  num_skills: 3
+
+evaluation:
+  ood_levels: [iid, ood_easy, ood_hard]

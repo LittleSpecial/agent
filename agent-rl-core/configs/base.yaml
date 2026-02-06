@@ -1,0 +1,39 @@
+experiment_name: baseline_core
+seed: 42
+
+model:
+  name: qwen2.5-placeholder
+  lora: true
+
+rollout:
+  max_steps: 20
+  num_envs: 16
+
+trainer:
+  algorithm: ppo
+  total_updates: 200
+  batch_size: 32
+  learning_rate: 2.0e-2
+  cost_penalty: 0.02
+  eval_interval: 20
+  save_interval: 20
+  log_interval: 20
+
+environment:
+  action_space: [inspect, search, tool_call, reason, answer]
+  min_plan_steps: 3
+  max_plan_steps: 6
+  train_tasks: 256
+  eval_tasks: 64
+
+policy:
+  init_skill: 0.35
+
+constraints:
+  tool_calls_budget: 8
+  output_tokens_budget: 1200
+  latency_ms_budget: 15000
+
+logging:
+  backend: tensorboard
+  save_dir: outputs/baseline
