@@ -37,9 +37,15 @@ Submit jobs:
 ```bash
 sbatch scripts/slurm/setup_env.sh
 sbatch scripts/slurm/run_baseline.sh
-sbatch scripts/slurm/run_c3_main.sh
+sbatch scripts/slurm/run_c3_main.sh  # default: strict C3 config
 sbatch scripts/slurm/run_pirl_main.sh
 sbatch scripts/slurm/run_vera_aux.sh
+```
+
+To override C3 config:
+
+```bash
+C3_CONFIG=paper-c3rl/configs/train_c3rl.yaml sbatch scripts/slurm/run_c3_main.sh
 ```
 
 One-shot suite:

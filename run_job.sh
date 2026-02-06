@@ -33,7 +33,9 @@ echo "Python: $(which python3)"
 nvidia-smi || true
 
 echo "=== Train C3 (mainline) ==="
-python3 paper-c3rl/scripts/train.py --config paper-c3rl/configs/train_c3rl.yaml
+C3_CONFIG="${C3_CONFIG:-paper-c3rl/configs/train_c3rl_strict.yaml}"
+echo "Using C3 config: ${C3_CONFIG}"
+python3 paper-c3rl/scripts/train.py --config "${C3_CONFIG}"
 
 echo "=== Train PIRL (secondary line) ==="
 python3 paper-pirl/scripts/train.py --config paper-pirl/configs/train_pirl.yaml

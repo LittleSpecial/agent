@@ -1,4 +1,4 @@
-experiment_name: c3rl_main
+experiment_name: c3rl_strict
 seed: 42
 
 core:
@@ -6,20 +6,20 @@ core:
 
 method:
   name: c3rl
-  dual_lr: 1.0e-3
+  dual_lr: 5.0e-3
   max_interventions_per_traj: 3
   intervention_policy: selective
-  baseline_warmup_updates: 40
+  baseline_warmup_updates: 10
 
 environment:
-  train_tasks: 256
-  eval_tasks: 64
+  train_tasks: 512
+  eval_tasks: 128
   train_dataset: null
   eval_dataset: null
   max_train_samples: null
   max_eval_samples: null
 
 constraints:
-  tool_calls_budget: 8
-  output_tokens_budget: 1200
-  latency_ms_budget: 15000
+  tool_calls_budget: 2.5
+  output_tokens_budget: 300
+  latency_ms_budget: 4000

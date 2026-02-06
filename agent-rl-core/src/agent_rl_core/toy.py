@@ -1,13 +1,102 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import random
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List
 
 from agent_rl_core.interfaces import Trajectory
 
 
 DEFAULT_ACTION_SPACE = ["inspect", "search", "tool_call", "reason", "answer"]
+
+
+def _stable_int_hash(text: str) -> int:
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return int(digest[:16], 16)
+
+
+def infer_target_plan(
+    prompt: str,
+    *,
+    action_space: List[str] | None = None,
+    min_plan_steps: int = 3,
+    max_plan_steps: int = 6,
+) -> List[str]:
+    actions = list(action_space or DEFAULT_ACTION_SPACE)
+    if "answer" not in actions:
+        actions.append("answer")
+    core_actions = [a for a in actions if a != "answer"]
+    if not core_actions:
+        core_actions = ["reason"]
+
+    seed = _stable_int_hash(prompt)
+    rng = random.Random(seed)
+    n_steps = rng.randint(min_plan_steps, max_plan_steps)
+    plan = [rng.choice(core_actions) for _ in range(max(1, n_steps - 1))]
+    plan.append("answer")
+    return plan
+
+
+def load_jsonl_tasks(
+    dataset_path: str | Path,
+    *,
+    action_space: List[str] | None = None,
+    min_plan_steps: int = 3,
+    max_plan_steps: int = 6,
+    max_samples: int | None = None,
+    tool_calls_budget: float = 8.0,
+    output_tokens_budget: float = 1200.0,
+    latency_ms_budget: float = 15000.0,
+) -> List[Dict[str, Any]]:
+    path = Path(dataset_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Dataset file not found: {path}")
+
+    tasks: List[Dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as f:
+        for line_idx, line in enumerate(f, start=1):
+            line = line.strip()
+            if not line:
+                continue
+            row = json.loads(line)
+            if not isinstance(row, dict):
+                continue
+            task_id = str(row.get("task_id", f"row_{line_idx}"))
+            prompt = str(row.get("prompt", ""))
+            target_plan = row.get("target_plan")
+            if isinstance(target_plan, list) and target_plan:
+                plan = [str(x) for x in target_plan]
+            else:
+                plan = infer_target_plan(
+                    prompt,
+                    action_space=action_space,
+                    min_plan_steps=min_plan_steps,
+                    max_plan_steps=max_plan_steps,
+                )
+
+            metadata = dict(row.get("metadata", {}))
+            metadata["prompt_len"] = len(prompt)
+            metadata["dataset_path"] = str(path)
+
+            tasks.append(
+                {
+                    "task_id": task_id,
+                    "target_plan": plan,
+                    "budgets": {
+                        "tool_calls": float(tool_calls_budget),
+                        "output_tokens": float(output_tokens_budget),
+                        "latency_ms": float(latency_ms_budget),
+                    },
+                    "metadata": metadata,
+                }
+            )
+            if max_samples is not None and len(tasks) >= max_samples:
+                break
+
+    return tasks
 
 
 def build_toy_tasks(

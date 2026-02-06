@@ -8,3 +8,4 @@ __pycache__/
 outputs/
 logs/
 *.log
+datasets/code/*.jsonl

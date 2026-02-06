@@ -10,7 +10,14 @@ from typing import Any, Dict
 import yaml
 
 from agent_rl_core.runner import RolloutConfig, RolloutRunner
-from agent_rl_core.toy import DEFAULT_ACTION_SPACE, ToyEnvironment, ToyPolicy, ToyVerifier, build_toy_tasks
+from agent_rl_core.toy import (
+    DEFAULT_ACTION_SPACE,
+    ToyEnvironment,
+    ToyPolicy,
+    ToyVerifier,
+    build_toy_tasks,
+    load_jsonl_tasks,
+)
 from agent_rl_core.trainer import BaselineTrainer, TrainConfig
 
 
@@ -50,27 +57,53 @@ def main() -> None:
     constraints_cfg = dict(cfg.get("constraints", {}))
 
     action_space = _resolve_action_space(cfg)
+    train_dataset = env_cfg.get("train_dataset")
+    eval_dataset = env_cfg.get("eval_dataset")
+    if isinstance(train_dataset, str) and train_dataset:
+        train_tasks = load_jsonl_tasks(
+            train_dataset,
+            action_space=action_space,
+            min_plan_steps=int(env_cfg.get("min_plan_steps", 3)),
+            max_plan_steps=int(env_cfg.get("max_plan_steps", 6)),
+            max_samples=env_cfg.get("max_train_samples"),
+            tool_calls_budget=float(constraints_cfg.get("tool_calls_budget", 8.0)),
+            output_tokens_budget=float(constraints_cfg.get("output_tokens_budget", 1200.0)),
+            latency_ms_budget=float(constraints_cfg.get("latency_ms_budget", 15000.0)),
+        )
+    else:
+        train_tasks = build_toy_tasks(
+            num_tasks=int(env_cfg.get("train_tasks", 256)),
+            seed=seed,
+            action_space=action_space,
+            min_plan_steps=int(env_cfg.get("min_plan_steps", 3)),
+            max_plan_steps=int(env_cfg.get("max_plan_steps", 6)),
+            tool_calls_budget=float(constraints_cfg.get("tool_calls_budget", 8.0)),
+            output_tokens_budget=float(constraints_cfg.get("output_tokens_budget", 1200.0)),
+            latency_ms_budget=float(constraints_cfg.get("latency_ms_budget", 15000.0)),
+        )
 
-    train_tasks = build_toy_tasks(
-        num_tasks=int(env_cfg.get("train_tasks", 256)),
-        seed=seed,
-        action_space=action_space,
-        min_plan_steps=int(env_cfg.get("min_plan_steps", 3)),
-        max_plan_steps=int(env_cfg.get("max_plan_steps", 6)),
-        tool_calls_budget=float(constraints_cfg.get("tool_calls_budget", 8.0)),
-        output_tokens_budget=float(constraints_cfg.get("output_tokens_budget", 1200.0)),
-        latency_ms_budget=float(constraints_cfg.get("latency_ms_budget", 15000.0)),
-    )
-    eval_tasks = build_toy_tasks(
-        num_tasks=int(env_cfg.get("eval_tasks", 64)),
-        seed=seed + 1,
-        action_space=action_space,
-        min_plan_steps=int(env_cfg.get("min_plan_steps", 3)),
-        max_plan_steps=int(env_cfg.get("max_plan_steps", 6)),
-        tool_calls_budget=float(constraints_cfg.get("tool_calls_budget", 8.0)),
-        output_tokens_budget=float(constraints_cfg.get("output_tokens_budget", 1200.0)),
-        latency_ms_budget=float(constraints_cfg.get("latency_ms_budget", 15000.0)),
-    )
+    if isinstance(eval_dataset, str) and eval_dataset:
+        eval_tasks = load_jsonl_tasks(
+            eval_dataset,
+            action_space=action_space,
+            min_plan_steps=int(env_cfg.get("min_plan_steps", 3)),
+            max_plan_steps=int(env_cfg.get("max_plan_steps", 6)),
+            max_samples=env_cfg.get("max_eval_samples"),
+            tool_calls_budget=float(constraints_cfg.get("tool_calls_budget", 8.0)),
+            output_tokens_budget=float(constraints_cfg.get("output_tokens_budget", 1200.0)),
+            latency_ms_budget=float(constraints_cfg.get("latency_ms_budget", 15000.0)),
+        )
+    else:
+        eval_tasks = build_toy_tasks(
+            num_tasks=int(env_cfg.get("eval_tasks", 64)),
+            seed=seed + 1,
+            action_space=action_space,
+            min_plan_steps=int(env_cfg.get("min_plan_steps", 3)),
+            max_plan_steps=int(env_cfg.get("max_plan_steps", 6)),
+            tool_calls_budget=float(constraints_cfg.get("tool_calls_budget", 8.0)),
+            output_tokens_budget=float(constraints_cfg.get("output_tokens_budget", 1200.0)),
+            latency_ms_budget=float(constraints_cfg.get("latency_ms_budget", 15000.0)),
+        )
 
     policy = ToyPolicy(
         action_space=action_space,
@@ -106,6 +139,10 @@ def main() -> None:
     summary = {
         "experiment_name": cfg.get("experiment_name", "baseline_core"),
         "seed": seed,
+        "train_tasks": len(train_tasks),
+        "eval_tasks": len(eval_tasks),
+        "train_dataset": train_dataset,
+        "eval_dataset": eval_dataset,
         "checkpoint": result["checkpoint"],
         "output_dir": result["output_dir"],
         "final_policy_skill": policy.skill,

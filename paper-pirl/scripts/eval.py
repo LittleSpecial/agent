@@ -17,7 +17,14 @@ for path in (CORE_SRC, METHODS_ROOT):
         sys.path.insert(0, str(path))
 
 from agent_rl_core.runner import RolloutConfig, RolloutRunner
-from agent_rl_core.toy import DEFAULT_ACTION_SPACE, ToyEnvironment, ToyPolicy, ToyVerifier, build_toy_tasks
+from agent_rl_core.toy import (
+    DEFAULT_ACTION_SPACE,
+    ToyEnvironment,
+    ToyPolicy,
+    ToyVerifier,
+    build_toy_tasks,
+    load_jsonl_tasks,
+)
 from pirl.algorithm import PIRLConfig, PIRLTrainer
 
 
@@ -119,16 +126,29 @@ def main() -> None:
     )
     pirl.load_state_dict(dict(payload.get("pirl_state", {})))
 
-    eval_tasks = build_toy_tasks(
-        num_tasks=int(env_cfg.get("eval_tasks", 64)),
-        seed=seed + 1,
-        action_space=action_space,
-        min_plan_steps=int(env_cfg.get("min_plan_steps", 3)),
-        max_plan_steps=int(env_cfg.get("max_plan_steps", 6)),
-        tool_calls_budget=float(constraints_cfg.get("tool_calls_budget", 8.0)),
-        output_tokens_budget=float(constraints_cfg.get("output_tokens_budget", 1200.0)),
-        latency_ms_budget=float(constraints_cfg.get("latency_ms_budget", 15000.0)),
-    )
+    eval_dataset = env_cfg.get("eval_dataset")
+    if isinstance(eval_dataset, str) and eval_dataset:
+        eval_tasks = load_jsonl_tasks(
+            eval_dataset,
+            action_space=action_space,
+            min_plan_steps=int(env_cfg.get("min_plan_steps", 3)),
+            max_plan_steps=int(env_cfg.get("max_plan_steps", 6)),
+            max_samples=env_cfg.get("max_eval_samples"),
+            tool_calls_budget=float(constraints_cfg.get("tool_calls_budget", 8.0)),
+            output_tokens_budget=float(constraints_cfg.get("output_tokens_budget", 1200.0)),
+            latency_ms_budget=float(constraints_cfg.get("latency_ms_budget", 15000.0)),
+        )
+    else:
+        eval_tasks = build_toy_tasks(
+            num_tasks=int(env_cfg.get("eval_tasks", 64)),
+            seed=seed + 1,
+            action_space=action_space,
+            min_plan_steps=int(env_cfg.get("min_plan_steps", 3)),
+            max_plan_steps=int(env_cfg.get("max_plan_steps", 6)),
+            tool_calls_budget=float(constraints_cfg.get("tool_calls_budget", 8.0)),
+            output_tokens_budget=float(constraints_cfg.get("output_tokens_budget", 1200.0)),
+            latency_ms_budget=float(constraints_cfg.get("latency_ms_budget", 15000.0)),
+        )
     _attach_skill_labels(eval_tasks, int(method_cfg.get("num_skills", 3)))
 
     runner = RolloutRunner(
@@ -144,6 +164,8 @@ def main() -> None:
     summary = {
         "experiment_name": full_cfg.get("experiment_name", "pirl_main"),
         "checkpoint_step": payload.get("step"),
+        "eval_tasks": len(eval_tasks),
+        "eval_dataset": eval_dataset,
         "policy_skill": policy.skill,
         "eval_metrics": metrics,
         "ood": ood,
