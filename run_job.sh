@@ -8,6 +8,7 @@
 #SBATCH --output=logs/job_%j.out
 #SBATCH --error=logs/job_%j.err
 
+export PYTHONUNBUFFERED=1
 set -eo pipefail
 
 mkdir -p logs outputs
@@ -15,9 +16,11 @@ cd "${SLURM_SUBMIT_DIR:-$PWD}"
 
 module purge
 module load miniforge3/24.1
-eval "$(conda shell.bash hook)" 2>/dev/null || true
-CONDA_ENV="${CONDA_ENV:-agentrl}"
-conda activate "${CONDA_ENV}" || source activate "${CONDA_ENV}"
+module load compilers/gcc/9.3.0
+module load compilers/cuda/11.6
+module load cudnn/8.6.0.163_cuda11.x
+CONDA_ENV="${CONDA_ENV:-/home/bingxing2/home/scx9krq/.conda/envs/rlvr}"
+source activate "${CONDA_ENV}"
 
 export PYTHONNOUSERSITE=1
 export TMPDIR="${TMPDIR:-$HOME/tmp}"

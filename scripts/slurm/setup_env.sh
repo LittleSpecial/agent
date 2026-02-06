@@ -10,6 +10,7 @@
 #SBATCH --error=logs/setup_%j.err
 #SBATCH --export=ALL
 
+export PYTHONUNBUFFERED=1
 set -eo pipefail
 trap 'rc=$?; echo "[ERR] setup_env.sh failed at line ${LINENO} (rc=${rc})" >&2' ERR
 
@@ -22,14 +23,12 @@ export PYTHONNOUSERSITE=1
 
 module purge
 module load miniforge3/24.1
+module load compilers/gcc/9.3.0
+module load compilers/cuda/11.6
+module load cudnn/8.6.0.163_cuda11.x
 
-CONDA_ENV="${CONDA_ENV:-$HOME/.conda/envs/agentrl}"
-if [ -d "${CONDA_ENV}" ]; then
-  source activate "${CONDA_ENV}" 2>/dev/null || true
-else
-  eval "$(conda shell.bash hook)" 2>/dev/null || true
-  conda activate "${CONDA_ENV##*/}" 2>/dev/null || true
-fi
+CONDA_ENV="${CONDA_ENV:-/home/bingxing2/home/scx9krq/.conda/envs/rlvr}"
+source activate "${CONDA_ENV}"
 
 PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || true)}"
 if [ -z "${PYTHON_BIN}" ]; then
@@ -42,6 +41,7 @@ echo "Job ID: ${SLURM_JOB_ID}"
 echo "Node: $(hostname)"
 echo "Python: ${PYTHON_BIN}"
 "${PYTHON_BIN}" -V
+module list 2>&1 || true
 nvidia-smi || true
 
 echo "=== Package check ==="
