@@ -161,6 +161,18 @@ echo "EXPERIMENT_NAME=${EXPERIMENT_NAME}"
 echo "TORCH_WHL_VER=${TORCH_WHL_VER}"
 echo "GCC_MODULE=${GCC_MODULE} CUDA_MODULE=${CUDA_MODULE} NCCL_MODULE=${NCCL_MODULE:-}"
 echo "MAX_STEPS=${MAX_STEPS}, BATCH_SIZE=${BATCH_SIZE}, NUM_ROLLOUTS_PER_PROMPT=${NUM_ROLLOUTS_PER_PROMPT}"
+echo "Python: ${PYTHON_BIN}"
+"${PYTHON_BIN}" -V
+nvidia-smi || true
+"${PYTHON_BIN}" - <<'PY'
+import sys
+import torch
+print("python:", sys.version.replace("\n", " "))
+print("torch:", torch.__version__)
+print("torch.version.cuda:", torch.version.cuda)
+print("cuda.is_available:", torch.cuda.is_available())
+print("device_count:", torch.cuda.device_count())
+PY
 
 PY_ARGS=(
   paper-pirl/scripts/train.py
