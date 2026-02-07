@@ -112,12 +112,22 @@ class SQLEnv(BaseEnv):
         if self.db_path and os.path.exists(self.db_path):
             os.unlink(self.db_path)
             self.db_path = None
+
+    @staticmethod
+    def _estimate_tokens(text: str) -> int:
+        """
+        Rough token-count proxy for budget accounting.
+        """
+        if not text:
+            return 0
+        return max(1, int(round(len(text) / 4.0)))
     
     def step(self, action: Action) -> Tuple[Observation, float, bool, Dict[str, Any]]:
         """执行一步动作"""
         self._step_counter += 1
         if action.action_type == ActionType.TOOL_CALL:
             self._total_tool_calls += 1
+        self._total_tokens += self._estimate_tokens(action.content)
         
         if action.action_type == ActionType.TOOL_CALL:
             if action.tool_name == "execute_sql":

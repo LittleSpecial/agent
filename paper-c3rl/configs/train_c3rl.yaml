@@ -1,30 +1,56 @@
 experiment_name: c3rl_main
 seed: 42
+output_dir: paper-c3rl/results
 
 core:
   base_config: ../agent-rl-core/configs/base.yaml
 
+model:
+  path: null
+  lora: true
+  lora_rank: 64
+  dtype: bf16
+
+trainer:
+  total_updates: 2000
+  batch_size: 2
+  learning_rate: 5.0e-6
+  log_interval: 20
+  eval_interval: 200
+  save_interval: 200
+  num_rollouts_per_prompt: 4
+  temperature: 1.0
+  top_p: 1.0
+  max_new_tokens: 192
+  max_prompt_tokens: 1024
+  grad_clip: 1.0
+  rl_microbatch_size: 0
+
 method:
   name: c3rl
-  dual_lr: 1.0e-3
-  max_interventions_per_traj: 3
-  intervention_policy: selective
-  baseline_warmup_updates: 40
+  use_counterfactual_credit: true
+  prioritize_high_value_cf: false
   counterfactual_k: 6
   intervention_types: [delete, truncate, swap]
-  delete_block_size: 2
   credit_normalization: signed
   cost_normalization: signed
   reward_mode: mixed
   reward_blend_alpha: 0.7
   failure_reward_floor: -0.01
-  cf_cache_size: 20000
+  flat_group_fallback: batch_centered
+  dual_lr: 5.0e-4
+  dual_warmup_steps: 200
+  lambda_max: 10.0
+  fallback_to_adv_when_zero_credit: true
+  zero_credit_threshold: 1.0e-8
 
 environment:
-  train_tasks: 256
-  eval_tasks: 64
-  train_dataset: null
-  eval_dataset: null
+  env_type: code
+  max_trajectory_length: 8
+  task_timeout_seconds: 8.0
+  show_tests: true
+  train_dataset: datasets/code/mbpp_train.jsonl
+  eval_dataset: datasets/code/humaneval_test.jsonl
   max_train_samples: null
   max_eval_samples: null
 
@@ -32,3 +58,6 @@ constraints:
   tool_calls_budget: 8
   output_tokens_budget: 1200
   latency_ms_budget: 15000
+
+evaluation:
+  eval_tasks: 64

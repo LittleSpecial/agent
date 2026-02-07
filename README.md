@@ -18,8 +18,8 @@ python3 -m pip install -e ./paper-pirl
 python3 -m pip install -e ./paper-vera-rl
 
 python3 agent-rl-core/scripts/train_baseline.py --config agent-rl-core/configs/base.yaml
-python3 paper-c3rl/scripts/train.py --config paper-c3rl/configs/train_c3rl.yaml
-python3 paper-pirl/scripts/train.py --config paper-pirl/configs/train_pirl.yaml
+python3 paper-c3rl/scripts/train.py --config paper-c3rl/configs/train_c3rl.yaml --backend hf
+python3 paper-pirl/scripts/train.py --config paper-pirl/configs/train_pirl.yaml --backend hf
 python3 paper-vera-rl/scripts/train.py --config paper-vera-rl/configs/train_vera.yaml
 ```
 

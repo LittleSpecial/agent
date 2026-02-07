@@ -35,10 +35,10 @@ nvidia-smi || true
 echo "=== Train C3 (mainline) ==="
 C3_CONFIG="${C3_CONFIG:-paper-c3rl/configs/train_c3rl_strict.yaml}"
 echo "Using C3 config: ${C3_CONFIG}"
-python3 paper-c3rl/scripts/train.py --config "${C3_CONFIG}"
+python3 paper-c3rl/scripts/train.py --config "${C3_CONFIG}" --backend hf
 
 echo "=== Train PIRL (secondary line) ==="
-python3 paper-pirl/scripts/train.py --config paper-pirl/configs/train_pirl.yaml
+python3 paper-pirl/scripts/train.py --config paper-pirl/configs/train_pirl.yaml --backend hf
 
 echo "=== Train VERA (aux module) ==="
 python3 paper-vera-rl/scripts/train.py --config paper-vera-rl/configs/train_vera.yaml

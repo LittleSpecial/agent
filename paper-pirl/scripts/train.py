@@ -396,7 +396,7 @@ def _evaluate_levels(
                 ids = [int(x) for x in seq.tolist()]
                 comp_ids = _extract_completion_ids(ids, prompt_len=p_len, eos_token_id=tokenizer.eos_token_id)
                 completion_text = tokenizer.decode(comp_ids, skip_special_tokens=True)
-                content = extract_python_code(completion_text)
+                content = extract_python_code(completion_text) if env_type == "code" else completion_text
                 env.reset(task)
                 if env_type == "code":
                     env.step(Action(ActionType.CODE_WRITE, content))
@@ -432,8 +432,11 @@ def run_hf(full_cfg: Dict[str, Any]) -> None:
     eval_cfg = dict(full_cfg.get("evaluation", {}))
 
     model_path = os.getenv("MODEL_PATH", model_cfg.get("path") or model_cfg.get("name"))
-    if not model_path:
-        raise ValueError("Missing model path. Set MODEL_PATH or model.path in config.")
+    if not model_path or str(model_path).strip().lower().endswith("placeholder"):
+        raise ValueError(
+            "Missing valid model path. Set MODEL_PATH or model.path in config "
+            "(current value looks like placeholder)."
+        )
     train_dataset = os.getenv("TRAIN_DATA", env_cfg.get("train_dataset"))
     eval_dataset = os.getenv("EVAL_DATA", env_cfg.get("eval_dataset"))
     if not train_dataset:
@@ -692,7 +695,7 @@ def run_hf(full_cfg: Dict[str, Any]) -> None:
             concat_b_token_lists.append(p_b_ids + completion_ids)
 
             completion_text = tokenizer.decode(completion_ids, skip_special_tokens=True)
-            content = extract_python_code(completion_text)
+            content = extract_python_code(completion_text) if env_type == "code" else completion_text
 
             env.reset(task)
             if env_type == "code":

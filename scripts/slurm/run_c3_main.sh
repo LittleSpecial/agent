@@ -31,4 +31,4 @@ mkdir -p "${TMPDIR}"
 
 C3_CONFIG="${C3_CONFIG:-paper-c3rl/configs/train_c3rl_strict.yaml}"
 echo "Using C3 config: ${C3_CONFIG}"
-python3 paper-c3rl/scripts/train.py --config "${C3_CONFIG}"
+python3 paper-c3rl/scripts/train.py --config "${C3_CONFIG}" --backend hf
