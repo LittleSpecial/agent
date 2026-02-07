@@ -310,6 +310,8 @@ def run_hf(full_cfg: Dict[str, Any]) -> None:
     max_new_tokens = int(os.getenv("MAX_NEW_TOKENS", trainer_cfg.get("max_new_tokens", 192)))
     max_prompt_tokens = int(os.getenv("MAX_PROMPT_TOKENS", trainer_cfg.get("max_prompt_tokens", 1024)))
     max_trajectory_length = int(os.getenv("MAX_TRAJECTORY_LENGTH", env_cfg.get("max_trajectory_length", 8)))
+    task_timeout_seconds = float(os.getenv("TASK_TIMEOUT_SECONDS", env_cfg.get("task_timeout_seconds", 8.0)))
+    show_tests = _bool_env("SHOW_TESTS", bool(env_cfg.get("show_tests", True)))
     eval_tasks = int(os.getenv("EVAL_TASKS", eval_cfg.get("eval_tasks", 64)))
     max_train_samples = env_cfg.get("max_train_samples")
     max_eval_samples = env_cfg.get("max_eval_samples")
@@ -429,8 +431,8 @@ def run_hf(full_cfg: Dict[str, Any]) -> None:
                 max_steps=max_trajectory_length,
                 seed=seed + dist_info.rank,
                 extra={
-                    "show_tests": bool(env_cfg.get("show_tests", True)),
-                    "default_timeout": float(env_cfg.get("task_timeout_seconds", 8.0)),
+                    "show_tests": bool(show_tests),
+                    "default_timeout": float(task_timeout_seconds),
                     "cap_task_timeout": True,
                 },
             )

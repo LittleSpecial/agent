@@ -1,17 +1,16 @@
 #!/bin/bash
-#SBATCH --job-name=c3_main
+#SBATCH --job-name=c3_hf
 #SBATCH --partition=gpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --gpus=1
-#SBATCH --cpus-per-task=32
-#SBATCH --time=12:00:00
-#SBATCH --output=logs/c3_%j.out
-#SBATCH --error=logs/c3_%j.err
+#SBATCH --gpus=4
+#SBATCH --cpus-per-task=128
+#SBATCH --time=24:00:00
+#SBATCH --output=logs/c3_hf_%j.out
+#SBATCH --error=logs/c3_hf_%j.err
 #SBATCH --export=ALL
 
-# Backward-compatible alias of run_c3_hf_1gpu.sh.
-DEFAULT_NUM_GPUS=1
+DEFAULT_NUM_GPUS=4
 COMMON_SH=""
 if [ -n "${SLURM_SUBMIT_DIR:-}" ] && [ -f "${SLURM_SUBMIT_DIR}/scripts/slurm/c3_hf_common.sh" ]; then
   COMMON_SH="${SLURM_SUBMIT_DIR}/scripts/slurm/c3_hf_common.sh"

@@ -38,6 +38,8 @@ Submit jobs:
 sbatch scripts/slurm/setup_env.sh
 sbatch scripts/slurm/run_baseline.sh
 sbatch scripts/slurm/run_c3_main.sh  # default: strict C3 config
+sbatch scripts/slurm/run_c3_hf_1gpu.sh
+sbatch scripts/slurm/run_c3_hf_4gpu.sh
 sbatch scripts/slurm/run_pirl_main.sh
 sbatch scripts/slurm/run_vera_aux.sh
 ```

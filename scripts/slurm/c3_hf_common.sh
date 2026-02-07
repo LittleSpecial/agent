@@ -1,0 +1,227 @@
+#!/bin/bash
+# shellcheck shell=bash
+
+set -eo pipefail
+trap 'rc=$?; echo "[ERR] c3_hf_common.sh failed at line ${LINENO} (rc=${rc})" >&2' ERR
+
+mkdir -p logs
+cd "${SLURM_SUBMIT_DIR:-$PWD}"
+
+echo "=== C3 HF job started at $(date) ==="
+echo "Job ID: ${SLURM_JOB_ID:-N/A}"
+echo "Node: $(hostname)"
+echo "PWD: $(pwd)"
+
+export TMPDIR="${TMPDIR:-$HOME/tmp}"
+mkdir -p "${TMPDIR}"
+export PYTHONNOUSERSITE=1
+export PYTHONUNBUFFERED=1
+export TOKENIZERS_PARALLELISM=false
+export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
+export TORCH_DDP_TIMEOUT_SECONDS="${TORCH_DDP_TIMEOUT_SECONDS:-3600}"
+export NCCL_IB_DISABLE="${NCCL_IB_DISABLE:-1}"
+export NCCL_DEBUG="${NCCL_DEBUG:-WARN}"
+export TORCH_NCCL_ASYNC_ERROR_HANDLING="${TORCH_NCCL_ASYNC_ERROR_HANDLING:-1}"
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-8}"
+
+module purge
+module load miniforge3/24.1
+
+: "${CUDA_MODULE:=compilers/cuda/11.8}"
+: "${GCC_MODULE:=compilers/gcc/11.3.0}"
+: "${NCCL_MODULE:=nccl/2.11.4-1_cuda11.8}"
+: "${CUDNN_MODULE:=cudnn/8.6.0.163_cuda11.x}"
+
+echo "=== Loading compute modules ==="
+echo "GCC_MODULE=${GCC_MODULE}"
+echo "CUDA_MODULE=${CUDA_MODULE}"
+echo "NCCL_MODULE=${NCCL_MODULE}"
+echo "CUDNN_MODULE=${CUDNN_MODULE}"
+module load "${GCC_MODULE}"
+module load "${CUDA_MODULE}"
+module load "${CUDNN_MODULE}"
+if [ -n "${NCCL_MODULE}" ]; then
+  module load "${NCCL_MODULE}" 2>/dev/null || true
+fi
+
+CONDA_ENV="${CONDA_ENV:-$HOME/.conda/envs/rlvr}"
+if [ -d "${CONDA_ENV}" ]; then
+  source activate "${CONDA_ENV}" 2>/dev/null || true
+fi
+
+if [ -z "${PYTHON_BIN:-}" ] && [ -x "${CONDA_ENV}/bin/python3" ]; then
+  PYTHON_BIN="${CONDA_ENV}/bin/python3"
+fi
+PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || true)}"
+if [ -z "${PYTHON_BIN}" ]; then
+  echo "[ERR] python3 not found in PATH." >&2
+  exit 2
+fi
+
+echo "Python: ${PYTHON_BIN}"
+"${PYTHON_BIN}" -V
+nvidia-smi || true
+
+"${PYTHON_BIN}" - <<'PY'
+import sys
+try:
+    import torch
+except Exception as e:
+    raise SystemExit(f"[ERROR] torch import failed: {e}")
+print("python:", sys.version.replace("\n", " "))
+print("torch:", torch.__version__)
+print("torch.version.cuda:", torch.version.cuda)
+print("cuda.is_available:", torch.cuda.is_available())
+print("device_count:", torch.cuda.device_count())
+if not torch.cuda.is_available():
+    raise SystemExit("[ERROR] torch.cuda.is_available() == False")
+PY
+
+MODEL_PATH="${MODEL_PATH:-}"
+TRAIN_DATA="${TRAIN_DATA:-datasets/code/mbpp_train.jsonl}"
+EVAL_DATA="${EVAL_DATA:-datasets/code/humaneval_test.jsonl}"
+C3_CONFIG="${C3_CONFIG:-paper-c3rl/configs/train_c3rl_strict.yaml}"
+
+if [ -z "${MODEL_PATH}" ]; then
+  echo "[ERR] MODEL_PATH is empty. Set MODEL_PATH before sbatch." >&2
+  exit 2
+fi
+if [ ! -f "${TRAIN_DATA}" ]; then
+  echo "[ERR] TRAIN_DATA not found: ${TRAIN_DATA}" >&2
+  exit 2
+fi
+if [ ! -f "${EVAL_DATA}" ]; then
+  echo "[WARN] EVAL_DATA not found: ${EVAL_DATA}." >&2
+fi
+
+NUM_GPUS="${NUM_GPUS:-${SLURM_GPUS_ON_NODE:-${DEFAULT_NUM_GPUS:-1}}}"
+if ! [[ "${NUM_GPUS}" =~ ^[0-9]+$ ]]; then
+  NUM_GPUS="$(echo "${NUM_GPUS}" | grep -oE '[0-9]+' | head -n1)"
+fi
+if ! [[ "${NUM_GPUS}" =~ ^[0-9]+$ ]] || [ "${NUM_GPUS}" -lt 1 ]; then
+  echo "[ERR] Invalid NUM_GPUS=${NUM_GPUS}" >&2
+  exit 2
+fi
+
+EXPERIMENT_NAME="${EXPERIMENT_NAME:-c3_hf_${SLURM_JOB_ID:-local}}"
+MAX_STEPS="${MAX_STEPS:-1000}"
+LOG_INTERVAL="${LOG_INTERVAL:-20}"
+EVAL_INTERVAL="${EVAL_INTERVAL:-100}"
+SAVE_INTERVAL="${SAVE_INTERVAL:-0}"
+LEARNING_RATE="${LEARNING_RATE:-5e-6}"
+BATCH_SIZE="${BATCH_SIZE:-2}"
+NUM_ROLLOUTS_PER_PROMPT="${NUM_ROLLOUTS_PER_PROMPT:-4}"
+TEMPERATURE="${TEMPERATURE:-1.0}"
+TOP_P="${TOP_P:-1.0}"
+MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-192}"
+MAX_PROMPT_TOKENS="${MAX_PROMPT_TOKENS:-1024}"
+MAX_TRAJECTORY_LENGTH="${MAX_TRAJECTORY_LENGTH:-8}"
+TASK_TIMEOUT_SECONDS="${TASK_TIMEOUT_SECONDS:-4}"
+SHOW_TESTS="${SHOW_TESTS:-1}"
+REWARD_MODE="${REWARD_MODE:-mixed}"
+REWARD_BLEND_ALPHA="${REWARD_BLEND_ALPHA:-0.7}"
+FAILURE_REWARD_FLOOR="${FAILURE_REWARD_FLOOR:--0.01}"
+FLAT_GROUP_FALLBACK="${FLAT_GROUP_FALLBACK:-raw}"
+USE_COUNTERFACTUAL_CREDIT="${USE_COUNTERFACTUAL_CREDIT:-1}"
+PRIORITIZE_HIGH_VALUE_CF="${PRIORITIZE_HIGH_VALUE_CF:-0}"
+COUNTERFACTUAL_K="${COUNTERFACTUAL_K:-6}"
+DUAL_LR="${DUAL_LR:-5e-4}"
+DUAL_WARMUP_STEPS="${DUAL_WARMUP_STEPS:-200}"
+LAMBDA_MAX="${LAMBDA_MAX:-10}"
+FALLBACK_TO_ADV_WHEN_ZERO_CREDIT="${FALLBACK_TO_ADV_WHEN_ZERO_CREDIT:-1}"
+ZERO_CREDIT_THRESHOLD="${ZERO_CREDIT_THRESHOLD:-1e-8}"
+EVAL_TASKS="${EVAL_TASKS:-64}"
+USE_LORA="${USE_LORA:-1}"
+LORA_RANK="${LORA_RANK:-64}"
+DTYPE="${DTYPE:-bf16}"
+GRAD_CLIP="${GRAD_CLIP:-1.0}"
+REQUIRE_CUDA="${REQUIRE_CUDA:-1}"
+TRUST_REMOTE_CODE="${TRUST_REMOTE_CODE:-0}"
+USE_CHAT_TEMPLATE="${USE_CHAT_TEMPLATE:-1}"
+GRADIENT_CHECKPOINTING="${GRADIENT_CHECKPOINTING:-1}"
+SYNC_EVAL_AND_SAVE="${SYNC_EVAL_AND_SAVE:-1}"
+RL_MICROBATCH_SIZE="${RL_MICROBATCH_SIZE:-0}"
+EXTRA_ARGS="${EXTRA_ARGS:-}"
+
+# Compatibility shim for ideaA style EXTRA_ARGS='--rl_microbatch_size 1'.
+if [ -n "${EXTRA_ARGS}" ]; then
+  if [[ "${EXTRA_ARGS}" =~ --rl_microbatch_size[[:space:]]+([0-9]+) ]]; then
+    RL_MICROBATCH_SIZE="${BASH_REMATCH[1]}"
+  fi
+  if [[ "${EXTRA_ARGS}" =~ --no-sync_eval_and_save ]]; then
+    SYNC_EVAL_AND_SAVE=0
+  fi
+fi
+
+echo "=== C3 run config ==="
+echo "NUM_GPUS=${NUM_GPUS}"
+echo "C3_CONFIG=${C3_CONFIG}"
+echo "EXPERIMENT_NAME=${EXPERIMENT_NAME}"
+echo "MODEL_PATH=${MODEL_PATH}"
+echo "TRAIN_DATA=${TRAIN_DATA}"
+echo "EVAL_DATA=${EVAL_DATA}"
+echo "MAX_STEPS=${MAX_STEPS} LOG_INTERVAL=${LOG_INTERVAL} EVAL_INTERVAL=${EVAL_INTERVAL} SAVE_INTERVAL=${SAVE_INTERVAL}"
+echo "LR=${LEARNING_RATE} BATCH_SIZE=${BATCH_SIZE} NUM_ROLLOUTS_PER_PROMPT=${NUM_ROLLOUTS_PER_PROMPT}"
+echo "MAX_PROMPT_TOKENS=${MAX_PROMPT_TOKENS} MAX_NEW_TOKENS=${MAX_NEW_TOKENS}"
+echo "MAX_TRAJECTORY_LENGTH=${MAX_TRAJECTORY_LENGTH} TASK_TIMEOUT_SECONDS=${TASK_TIMEOUT_SECONDS}"
+echo "REWARD_MODE=${REWARD_MODE} REWARD_BLEND_ALPHA=${REWARD_BLEND_ALPHA} FAILURE_REWARD_FLOOR=${FAILURE_REWARD_FLOOR}"
+echo "USE_COUNTERFACTUAL_CREDIT=${USE_COUNTERFACTUAL_CREDIT} COUNTERFACTUAL_K=${COUNTERFACTUAL_K}"
+echo "DUAL_LR=${DUAL_LR} DUAL_WARMUP_STEPS=${DUAL_WARMUP_STEPS} LAMBDA_MAX=${LAMBDA_MAX}"
+echo "RL_MICROBATCH_SIZE=${RL_MICROBATCH_SIZE} SYNC_EVAL_AND_SAVE=${SYNC_EVAL_AND_SAVE}"
+
+PY_ARGS=(
+  paper-c3rl/scripts/train.py
+  --config "${C3_CONFIG}"
+  --backend hf
+)
+
+if [ "${NUM_GPUS}" -gt 1 ]; then
+  LAUNCH_CMD=("${PYTHON_BIN}" -u -m torch.distributed.run --standalone --nproc_per_node="${NUM_GPUS}" "${PY_ARGS[@]}")
+else
+  LAUNCH_CMD=("${PYTHON_BIN}" -u "${PY_ARGS[@]}")
+fi
+
+MODEL_PATH="${MODEL_PATH}" \
+TRAIN_DATA="${TRAIN_DATA}" \
+EVAL_DATA="${EVAL_DATA}" \
+EXPERIMENT_NAME="${EXPERIMENT_NAME}" \
+MAX_STEPS="${MAX_STEPS}" \
+LOG_INTERVAL="${LOG_INTERVAL}" \
+EVAL_INTERVAL="${EVAL_INTERVAL}" \
+SAVE_INTERVAL="${SAVE_INTERVAL}" \
+LEARNING_RATE="${LEARNING_RATE}" \
+BATCH_SIZE="${BATCH_SIZE}" \
+NUM_ROLLOUTS_PER_PROMPT="${NUM_ROLLOUTS_PER_PROMPT}" \
+TEMPERATURE="${TEMPERATURE}" \
+TOP_P="${TOP_P}" \
+MAX_NEW_TOKENS="${MAX_NEW_TOKENS}" \
+MAX_PROMPT_TOKENS="${MAX_PROMPT_TOKENS}" \
+MAX_TRAJECTORY_LENGTH="${MAX_TRAJECTORY_LENGTH}" \
+TASK_TIMEOUT_SECONDS="${TASK_TIMEOUT_SECONDS}" \
+SHOW_TESTS="${SHOW_TESTS}" \
+REWARD_MODE="${REWARD_MODE}" \
+REWARD_BLEND_ALPHA="${REWARD_BLEND_ALPHA}" \
+FAILURE_REWARD_FLOOR="${FAILURE_REWARD_FLOOR}" \
+FLAT_GROUP_FALLBACK="${FLAT_GROUP_FALLBACK}" \
+USE_COUNTERFACTUAL_CREDIT="${USE_COUNTERFACTUAL_CREDIT}" \
+PRIORITIZE_HIGH_VALUE_CF="${PRIORITIZE_HIGH_VALUE_CF}" \
+COUNTERFACTUAL_K="${COUNTERFACTUAL_K}" \
+DUAL_LR="${DUAL_LR}" \
+DUAL_WARMUP_STEPS="${DUAL_WARMUP_STEPS}" \
+LAMBDA_MAX="${LAMBDA_MAX}" \
+FALLBACK_TO_ADV_WHEN_ZERO_CREDIT="${FALLBACK_TO_ADV_WHEN_ZERO_CREDIT}" \
+ZERO_CREDIT_THRESHOLD="${ZERO_CREDIT_THRESHOLD}" \
+EVAL_TASKS="${EVAL_TASKS}" \
+USE_LORA="${USE_LORA}" \
+LORA_RANK="${LORA_RANK}" \
+DTYPE="${DTYPE}" \
+GRAD_CLIP="${GRAD_CLIP}" \
+REQUIRE_CUDA="${REQUIRE_CUDA}" \
+TRUST_REMOTE_CODE="${TRUST_REMOTE_CODE}" \
+USE_CHAT_TEMPLATE="${USE_CHAT_TEMPLATE}" \
+GRADIENT_CHECKPOINTING="${GRADIENT_CHECKPOINTING}" \
+SYNC_EVAL_AND_SAVE="${SYNC_EVAL_AND_SAVE}" \
+RL_MICROBATCH_SIZE="${RL_MICROBATCH_SIZE}" \
+"${LAUNCH_CMD[@]}"
+
+echo "=== C3 HF done ==="
