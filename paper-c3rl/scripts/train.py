@@ -576,7 +576,8 @@ def run_hf(full_cfg: Dict[str, Any]) -> None:
         )
         input_ids = enc["input_ids"].to(device)
         attention_mask = enc["attention_mask"].to(device)
-        prompt_lens_base = [int(x) for x in attention_mask.sum(dim=1).tolist()]
+        # For generate() outputs, completion starts at padded input width.
+        prompt_prefix_len = int(input_ids.size(1))
 
         model.eval()
         with torch.no_grad():
@@ -596,7 +597,7 @@ def run_hf(full_cfg: Dict[str, Any]) -> None:
         r = int(num_rollouts_per_prompt)
         n_samples = len(prompt_tasks) * r
         expanded_tasks = [prompt_tasks[i // r] for i in range(n_samples)]
-        prompt_lens = [prompt_lens_base[i // r] for i in range(n_samples)]
+        prompt_lens = [prompt_prefix_len for _ in range(n_samples)]
 
         trajectories: List[Trajectory] = []
         for seq, task, p_len in zip(sequences, expanded_tasks, prompt_lens):

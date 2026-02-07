@@ -255,7 +255,8 @@ def main() -> None:
             )
             in_ids = enc["input_ids"].to(device)
             attn = enc["attention_mask"].to(device)
-            p_len = int(attn.sum(dim=1).item())
+            # For generate() outputs, completion starts at padded input width.
+            p_len = int(in_ids.size(1))
 
             seq = model.generate(
                 input_ids=in_ids,

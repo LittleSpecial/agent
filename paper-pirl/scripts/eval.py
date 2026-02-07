@@ -405,7 +405,8 @@ def _evaluate_level(
             )
             input_ids = enc["input_ids"].to(device)
             attention_mask = enc["attention_mask"].to(device)
-            prompt_len = int(attention_mask.sum(dim=1).item())
+            # For generate() outputs, completion starts after padded input width.
+            prompt_len = int(input_ids.size(1))
 
             gen_kwargs: Dict[str, Any] = {
                 "input_ids": input_ids,
@@ -425,7 +426,7 @@ def _evaluate_level(
             ids = [int(x) for x in seq.tolist()]
             comp_ids = _extract_completion_ids(ids, prompt_len=prompt_len, eos_token_id=tokenizer.eos_token_id)
             completion_text = tokenizer.decode(comp_ids, skip_special_tokens=True)
-            content = extract_python_code(completion_text)
+            content = extract_python_code(completion_text) if env_type == "code" else completion_text
 
             env.reset(task)
             t0 = time.time()

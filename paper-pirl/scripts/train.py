@@ -384,7 +384,8 @@ def _evaluate_levels(
                 )
                 in_ids = enc["input_ids"].to(device)
                 attn = enc["attention_mask"].to(device)
-                p_len = int(attn.sum(dim=1).item())
+                # For batched generation, completion starts after padded input width.
+                p_len = int(in_ids.size(1))
                 seq = model.generate(
                     input_ids=in_ids,
                     attention_mask=attn,
@@ -476,6 +477,7 @@ def run_hf(full_cfg: Dict[str, Any]) -> None:
     trust_remote_code = _bool_env("TRUST_REMOTE_CODE", False)
     use_chat_template = _bool_env("USE_CHAT_TEMPLATE", True)
     gradient_checkpointing = _bool_env("GRADIENT_CHECKPOINTING", True)
+    sync_eval_and_save = _bool_env("SYNC_EVAL_AND_SAVE", True)
     system_prompt = os.getenv("SYSTEM_PROMPT")
     env_type = str(env_cfg.get("env_type", full_cfg.get("env_type", "code")))
     ood_levels = [str(x) for x in eval_cfg.get("ood_levels", ["iid", "ood_easy", "ood_hard"])]
@@ -656,7 +658,8 @@ def run_hf(full_cfg: Dict[str, Any]) -> None:
         )
         input_ids_a = enc_a["input_ids"].to(device)
         attention_mask_a = enc_a["attention_mask"].to(device)
-        prompt_lens_a_base = [int(x) for x in attention_mask_a.sum(dim=1).tolist()]
+        # For generate() outputs, completion starts at the padded input length.
+        prompt_prefix_len_a = int(input_ids_a.size(1))
 
         model.eval()
         with torch.no_grad():
@@ -676,7 +679,7 @@ def run_hf(full_cfg: Dict[str, Any]) -> None:
         r = int(num_rollouts_per_prompt)
         n_samples = len(prompt_tasks) * r
         expanded_tasks = [prompt_tasks[i // r] for i in range(n_samples)]
-        expanded_prompt_lens_a = [prompt_lens_a_base[i // r] for i in range(n_samples)]
+        expanded_prompt_lens_a = [prompt_prefix_len_a for _ in range(n_samples)]
         prompt_b_ids_base = [_tokenize_prompt_ids(tokenizer, text, max_prompt_tokens) for text in prompt_b_texts]
 
         trajectories: List[Trajectory] = []
@@ -824,6 +827,9 @@ def run_hf(full_cfg: Dict[str, Any]) -> None:
                     flush=True,
                 )
 
+        if sync_eval_and_save:
+            barrier(dist_info=dist_info)
+
         if tracker and dist_info.is_rank0 and (step % eval_interval == 0):
             eval_metrics = _evaluate_levels(
                 model=model,
@@ -850,12 +856,18 @@ def run_hf(full_cfg: Dict[str, Any]) -> None:
             if dist_info.is_rank0:
                 print(f"[eval step {step}] {json.dumps({'metrics': eval_metrics, 'robust_gap': robust_gap})}", flush=True)
 
+        if sync_eval_and_save:
+            barrier(dist_info=dist_info)
+
         if tracker and dist_info.is_rank0 and save_interval and (step % save_interval == 0):
             ckpt_dir = Path(exp_dir) / "checkpoints" / f"step_{step}"
             ckpt_dir.mkdir(parents=True, exist_ok=True)
             model.save_pretrained(str(ckpt_dir))
             tokenizer.save_pretrained(str(ckpt_dir))
             tracker.log_event("checkpoint", "saved checkpoint", {"step": step, "path": str(ckpt_dir)})
+
+        if sync_eval_and_save:
+            barrier(dist_info=dist_info)
 
     if tracker and dist_info.is_rank0:
         final_ckpt = Path(exp_dir) / "checkpoints" / "final"
