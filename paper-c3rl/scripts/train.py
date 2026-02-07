@@ -319,7 +319,7 @@ def run_hf(full_cfg: Dict[str, Any]) -> None:
     reward_mode = str(os.getenv("REWARD_MODE", method_cfg.get("reward_mode", "mixed")))
     reward_blend_alpha = float(os.getenv("REWARD_BLEND_ALPHA", method_cfg.get("reward_blend_alpha", 0.7)))
     failure_reward_floor = float(os.getenv("FAILURE_REWARD_FLOOR", method_cfg.get("failure_reward_floor", -0.01)))
-    flat_group_fallback = str(method_cfg.get("flat_group_fallback", "batch_centered"))
+    flat_group_fallback = str(os.getenv("FLAT_GROUP_FALLBACK", method_cfg.get("flat_group_fallback", "batch_centered")))
 
     use_counterfactual_credit = _bool_env(
         "USE_COUNTERFACTUAL_CREDIT",
@@ -360,9 +360,9 @@ def run_hf(full_cfg: Dict[str, Any]) -> None:
     experiment_name = str(os.getenv("EXPERIMENT_NAME", full_cfg.get("experiment_name", "c3rl_main")))
 
     budget_targets = {
-        "tool_calls": float(constraints_cfg.get("tool_calls_budget", 8.0)),
-        "output_tokens": float(constraints_cfg.get("output_tokens_budget", 1200.0)),
-        "latency_ms": float(constraints_cfg.get("latency_ms_budget", 15000.0)),
+        "tool_calls": float(os.getenv("TOOL_CALLS_BUDGET", constraints_cfg.get("tool_calls_budget", 8.0))),
+        "output_tokens": float(os.getenv("OUTPUT_TOKENS_BUDGET", constraints_cfg.get("output_tokens_budget", 1200.0))),
+        "latency_ms": float(os.getenv("LATENCY_MS_BUDGET", constraints_cfg.get("latency_ms_budget", 15000.0))),
     }
 
     dist_info: DistInfo = init_distributed()
